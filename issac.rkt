@@ -15,19 +15,21 @@
 ;; ----------------------------------------
 
 (require racket/fixnum
+         racket/flonum
          (only-in racket/random
                   crypto-random-bytes)
          racket/unsafe/ops)
 
-
 (provide (rename-out [irand-ctx? irandom-context?])
          current-irandom-context
-         irandom-init/null
          irandom-init
          irandom-32
-         irand-ctx-randrsl              ; Private: Only for testing
-         generate-next-random-block!    ; Private: Only for testing
-         )
+         irandom-bytes
+         irandom
+         ;; Private: Only for testing
+         irandom-init/null
+         irand-ctx-randrsl
+         generate-next-random-block!)
 
 
 ;; Context of random number generator
@@ -162,12 +164,15 @@
     ctx))
 
 
-(define (irandom-init/null)
-  (scramble! (irand-ctx 0 (make-fxvector 256 0) (make-fxvector 256 0) 0 0 0)))
+(define (irandom-init/null #:seeds [seeds #f])
+  (let* ([seeds (or seeds (make-fxvector 256 0))]
+         [seeds (if (fxvector? seeds) seeds (for/fxvector ([s (in-list seeds)]) s))])
+   (scramble! (irand-ctx 0 seeds (make-fxvector 256 0) 0 0 0))))
 
 
 (define (irandom-init)
-  (let ([bs (crypto-random-bytes 1024)])
+  (let ([bs (crypto-random-bytes 1024)]
+        [bige? (system-big-endian?)])
     (scramble!
      (irand-ctx
       0
@@ -175,7 +180,7 @@
                 ([i (in-range 0 256)])
         (let ([j (unsafe-fx* i 4)])
           (fxvector-set!
-           vec i (fxand #xFFFFFFFF (integer-bytes->integer bs #f #f j (unsafe-fx+ j 4))))
+           vec i (fxand #xFFFFFFFF (integer-bytes->integer bs #f bige? j (unsafe-fx+ j 4))))
           vec))
       (make-fxvector 256 0)
       0 0 0))))
@@ -186,12 +191,45 @@
 
 (define (irandom-32)
   (let* ([ctx (current-irandom-context)]
-         [cnt (unsafe-fx- (randcnt ctx) 1)]
-         [r (randrsl ctx)])
+         [r (randrsl ctx)]
+         [cnt (unsafe-fx- (randcnt ctx) 1)])
     (set-randcnt! ctx cnt)
     (cond
-      [(<= cnt 0)
+      [(< cnt 0)
        (generate-next-random-block! ctx)
        (set-randcnt! ctx 255)
        (unsafe-fxvector-ref r 255)]
       [else (unsafe-fxvector-ref r cnt)])))
+
+
+(define (irandom-bytes n)
+  (unless (and (fixnum? n) (>= n 0))
+    (raise-argument-error 'irandom-bytes "(and/c fixnum? nonnegative?)" n))
+  (let ([dest (make-bytes n)])
+    (cond
+      [(= n 0) dest]
+      [else
+       (let* ([ctx (current-irandom-context)]
+              [rsl (randrsl ctx)]
+              [cnt (unsafe-fx- (randcnt ctx) 1)]
+              [n4 (unsafe-fx* (fxquotient n 4) 4)]
+              [bige? (system-big-endian?)])
+         (let loop ([i 0] [cnt cnt])
+           (cond
+             [(< cnt 0)
+              (generate-next-random-block! ctx)
+              (loop i 255)]
+             [(>= i n)
+              (set-randcnt! ctx cnt)
+              dest]
+             [else
+              (let* ([rnd (unsafe-fxvector-ref rsl cnt)]
+                     [bs (integer->integer-bytes rnd 4 bige?)]
+                     [l (if (>= i n4) (fxremainder n 4) 4)])
+                (unsafe-bytes-copy! dest i bs 0 l)
+                (loop (unsafe-fx+ i 4) (unsafe-fx- cnt 1)))])))])))
+
+
+(define (irandom)
+  ;; (/ (random-32) (- (expt 2 32) 1))
+  (fl* (exact->inexact (irandom-32)) 2.3283064370807974e-10))
