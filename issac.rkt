@@ -52,6 +52,15 @@
 (define-syntax-rule (set-randc! ctx v) (unsafe-struct*-set! ctx 5 v))
 
 
+(define-syntax-rule (rsh a b) (unsafe-fxrshift (unsafe-fxand a #xFFFFFFFF) b))
+(define-syntax-rule (lsh a b) (unsafe-fxand #xFFFFFFFF (unsafe-fxlshift a b)))
+(define-syntax fx+/32
+  (syntax-rules ()
+    [(_ a b) (unsafe-fxand #xFFFFFFFF (unsafe-fx+ a b))]
+    [(_ a b c) (unsafe-fxand #xFFFFFFFF (unsafe-fx+ a b c))]))
+(define-syntax-rule (ind a) (unsafe-fxand a #xFF))
+
+
 (define (generate-next-random-block! ctx)
   (let* ([m (randmem ctx)]
          [r (randrsl ctx)]
@@ -62,57 +71,40 @@
                     ([i (in-range 256)])
             (let* ([a (unsafe-fxxor
                        a
-                       (unsafe-fxand
-                        #xFFFFFFFF
-                        (let ([ii (unsafe-fxand i 3)])
-                          (cond
-                            [(fx= ii 0) (unsafe-fxlshift a 13)]
-                            [(fx= ii 1) (unsafe-fxrshift a 6)]
-                            [(fx= ii 2) (unsafe-fxlshift a 2)]
-                            [else (unsafe-fxrshift a 16)]))))]
-                   [a (unsafe-fxand
-                       #xFFFFFFFF
-                       (unsafe-fx+
-                        (unsafe-fxvector-ref m (unsafe-fxand (unsafe-fx+ i 128) #xFF))
-                        a))]
+                       (let ([ii (unsafe-fxand i 3)])
+                         (cond
+                           [(fx= ii 0) (lsh a 13)]
+                           [(fx= ii 1) (rsh a 6)]
+                           [(fx= ii 2) (lsh a 2)]
+                           [else (rsh a 16)])))]
+                   [a (fx+/32 (unsafe-fxvector-ref m (ind (unsafe-fx+ i 128))) a)]
                    [x (fxvector-ref m i)]
-                   [y (unsafe-fxand
-                       #xFFFFFFFF
-                       (unsafe-fx+
-                        (unsafe-fxvector-ref m (unsafe-fxand (unsafe-fxrshift x 2) #xFF))
-                        a b))]
-                   [b (unsafe-fxand
-                       #xFFFFFFFF
-                       (unsafe-fx+
-                        (unsafe-fxvector-ref m (unsafe-fxand (unsafe-fxrshift y 10) #xFF))
-                        x))])
+                   [y (fx+/32 (unsafe-fxvector-ref m (ind (unsafe-fxrshift x 2))) a b)])
               (unsafe-fxvector-set! m i y)
-              (unsafe-fxvector-set! r i b)
-              (values a b)))])
+              (let ([b (fx+/32 (unsafe-fxvector-ref m (ind (unsafe-fxrshift y 10))) x)])
+                (unsafe-fxvector-set! r i b)
+                (values a b))))])
       (set-randa! ctx a)
       (set-randb! ctx b)
       (set-randc! ctx c)
       ctx)))
 
 
-(define-syntax-rule (fx+/32 a b) (unsafe-fxand #xFFFFFFFF (unsafe-fx+ a b)))
-
-
 (define-syntax mix*
   (syntax-rules ()
     [(_ body) body]
     [(_ (a b c d (sf s)) forms ... body)
-     (let* ([a (unsafe-fxxor a (unsafe-fxand #xFFFFFFFF (sf b s)))]
+     (let* ([a (unsafe-fxxor a (sf b s))]
             [d (fx+/32 d a)] [b (fx+/32 b c)])
        (mix* forms ... body))]))
 
 
 (define (scramble! ctx)
   (define (mix a b c d e f g h)
-    (mix* (a b c d (unsafe-fxlshift 11)) (b c d e (unsafe-fxrshift 2))
-          (c d e f (unsafe-fxlshift 8)) (d e f g (unsafe-fxrshift 16))
-          (e f g h (unsafe-fxlshift 10)) (f g h a (unsafe-fxrshift 4))
-          (g h a b (unsafe-fxlshift 8)) (h a b c (unsafe-fxrshift 9))
+    (mix* (a b c d (lsh 11)) (b c d e (rsh 2))
+          (c d e f (lsh 8)) (d e f g (rsh 16))
+          (e f g h (lsh 10)) (f g h a (rsh 4))
+          (g h a b (lsh 8)) (h a b c (rsh 9))
           (values a b c d e f g h)))
   (let*-values
       ([(r) (randrsl ctx)]
