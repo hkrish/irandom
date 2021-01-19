@@ -167,7 +167,7 @@
 (define (irandom-init/null #:seeds [seeds #f])
   (let* ([seeds (or seeds (make-fxvector 256 0))]
          [seeds (if (fxvector? seeds) seeds (for/fxvector ([s (in-list seeds)]) s))])
-   (scramble! (irand-ctx 0 seeds (make-fxvector 256 0) 0 0 0))))
+    (scramble! (irand-ctx 0 seeds (make-fxvector 256 0) 0 0 0))))
 
 
 (define (irandom-init)
@@ -212,21 +212,34 @@
        (let* ([ctx (current-irandom-context)]
               [rsl (randrsl ctx)]
               [cnt (unsafe-fx- (randcnt ctx) 1)]
-              [n4 (unsafe-fx* (fxquotient n 4) 4)]
-              [bige? (system-big-endian?)])
+              [n4 (unsafe-fx* (fxquotient n 4) 4)])
          (let loop ([i 0] [cnt cnt])
            (cond
              [(< cnt 0)
               (generate-next-random-block! ctx)
               (loop i 255)]
-             [(>= i n)
+             [(>= i n4)
+              (when (> n n4)
+                (let ([rnd (unsafe-fxand #xFFFFFFFF (unsafe-fxvector-ref rsl cnt))]
+                      [l (unsafe-fx- n n4)])
+                  (when (> l 0)
+                    (unsafe-bytes-set! dest i (unsafe-fxand #xFF rnd)))
+                  (when (> l 1)
+                    (unsafe-bytes-set! dest (unsafe-fx+ i 1)
+                                       (unsafe-fxand #xFF (unsafe-fxrshift rnd 8))))
+                  (when (> l 2)
+                    (unsafe-bytes-set! dest (unsafe-fx+ i 2)
+                                       (unsafe-fxand #xFF (unsafe-fxrshift rnd 16))))))
               (set-randcnt! ctx cnt)
               dest]
              [else
-              (let* ([rnd (unsafe-fxvector-ref rsl cnt)]
-                     [bs (integer->integer-bytes rnd 4 bige?)]
-                     [l (if (>= i n4) (fxremainder n 4) 4)])
-                (unsafe-bytes-copy! dest i bs 0 l)
+              (let ([rnd (unsafe-fxand #xFFFFFFFF (unsafe-fxvector-ref rsl cnt))])
+                (unsafe-bytes-set! dest i (unsafe-fxand #xFF rnd))
+                (unsafe-bytes-set! dest (unsafe-fx+ i 1)
+                                   (unsafe-fxand #xFF (unsafe-fxrshift rnd 8)))
+                (unsafe-bytes-set! dest (unsafe-fx+ i 2)
+                                   (unsafe-fxand #xFF (unsafe-fxrshift rnd 16)))
+                (unsafe-bytes-set! dest (unsafe-fx+ i 3) (unsafe-fxrshift rnd 24))
                 (loop (unsafe-fx+ i 4) (unsafe-fx- cnt 1)))])))])))
 
 
