@@ -11,11 +11,12 @@
 
 (define build-deps '("scribble-lib" "racket-doc" "rackunit-lib"))
 
-(define scribblings '(("scribblings/ISAAC.scrbl" ())))
+(define scribblings '(("scribblings/irandom.scrbl" ())))
 
 (define compile-omit-paths '("test"))
 
-(define test-include-paths '("test"))
-(define test-omit-paths '("./info.rkt" "./main.rkt" "private" "scribblings"))
+(define test-omit-paths '("main.rkt" "info.rkt" "test/data" "scribblings" "doc" "compiled"
+                                     "isaac.rkt" "uuid.rkt"))
+(define test-include-paths '("test/test.rkt"))
 
 (define pkg-authors '(hkrish))
