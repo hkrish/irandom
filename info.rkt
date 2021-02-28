@@ -4,8 +4,8 @@
 
 (define version "0.5")
 
-(define pkg-desc
-  "Racket implementation of Bob Jenkins' ISAAC pseudorandom number generator (Indirection, Shift, Accumulate, Add, and Count).")
+(define pkg-desc "Racket implementation of Bob Jenkins' ISAAC pseudorandom number\
+ generator (Indirection, Shift, Accumulate, Add, and Count).")
 
 (define deps '("base"))
 
@@ -15,8 +15,10 @@
 
 (define compile-omit-paths '("test"))
 
-(define test-omit-paths '("main.rkt" "info.rkt" "test/data" "scribblings" "doc" "compiled"
-                                     "isaac.rkt" "uuid.rkt"))
+(define test-omit-paths
+  '("main.rkt" "info.rkt" "test/data" "scribblings" "doc" "compiled"
+               "isaac.rkt" "uuid.rkt" "dieharder-stdout.rkt" "irandout.rkt"))
+
 (define test-include-paths '("test/test.rkt"))
 
 (define pkg-authors '(hkrish))
