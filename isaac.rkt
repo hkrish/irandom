@@ -15,21 +15,33 @@
 ;; ----------------------------------------
 
 
-(require (for-syntax racket/base)
+(require (for-syntax racket/base racket/syntax)
          (only-in racket/require filtered-in)
          (only-in racket/random crypto-random-bytes)
          racket/performance-hint
          (only-in racket/fixnum fxvector? make-fxvector for/fxvector)
          (only-in racket/flonum make-flvector)
+         (only-in ffi/vector
+                  make-u32vector
+                  u32vector-ref
+                  u32vector-set!
+                  u32vector->cpointer
+                  make-u64vector
+                  u64vector-ref
+                  u64vector-set!
+                  u64vector->cpointer
+                  make-f64vector)
          (only-in racket/unsafe/ops
                   unsafe-struct*-ref
                   unsafe-struct*-set!
                   unsafe-bytes-ref
                   unsafe-bytes-set!)
+         (only-in ffi/unsafe memcpy _byte _uint32 _uint64)
          (filtered-in
           (lambda (name)
             (and (or (regexp-match #rx"^unsafe-fx" name)
-                     (regexp-match #rx"^unsafe-fl" name))
+                     (regexp-match #rx"^unsafe-fl" name)
+                     (regexp-match #rx"^unsafe-f64" name))
                  (regexp-replace #rx"unsafe-" name "")))
           racket/unsafe/ops))
 
@@ -41,9 +53,12 @@
          irandom-fxvector-32
          irandom-list-32
          irandom-fixnum
-         irandom-fxvector
          irandom
+         irandom-fxvector
          irandom-flvector
+         irandom-u32vector
+         irandom-u64vector
+         irandom-f64vector
          ;; Private: Only for testing
          make-irandom-null-context
          irandom-context-randrsl
@@ -280,6 +295,13 @@
                   (loop (fx+ i 1) cnt))])))]))))
 
 
+(define (irandom-u32vector n)
+  (let ([out (make-u32vector n)]
+        [in (irandom-bytes (fx* n 4))])
+    (memcpy (u32vector->cpointer out) 0 in 0 n _uint32)
+    out))
+
+
 (define (irandom-list-32 n)
   (let ([v (irandom-fxvector-32 n)])
     (let loop ([i 0] [dst null])
@@ -295,31 +317,6 @@
     (fxior (fxlshift a 28) (fxand #xfffffff b))))
 
 
-(define-syntax-rule (-fxvector-loop dst src n offset body)
-  (let loop ([i (fx- n 1)])
-    (cond
-      [(fx< i 0) body]
-      [else
-       (let ([a (fxvector-ref src (fx* i 2))]
-             [b (fxvector-ref src (fx+ (fx* i 2) 1))])
-         (fxvector-set! dst (fx+ i offset) (fxior (fxlshift a 28) (fxand #xfffffff b)))
-         (loop (fx- i 1)))])))
-
-
-(define (irandom-fxvector n)
-  (let ([out (make-fxvector n)])
-    (cond
-      [(fx> n #x7ffffffffffffff)
-       (let* ([n/2 (fxrshift n 1)]
-              [in (irandom-fxvector-32 n)])
-         (-fxvector-loop out in n/2 0
-                         (let ([in (irandom-fxvector-32 n)])
-                           (-fxvector-loop out in n/2 n/2 out))))]
-      [else
-       (let ([in (irandom-fxvector-32 (fx* n 2))])
-         (-fxvector-loop out in n 0 out))])))
-
-
 (define (irandom)
   (let* ([v (irandom-fxvector-32 2)]
          [a (fxvector-ref v 0)]
@@ -328,29 +325,52 @@
          (real->double-flonum (fxior (fxlshift a 28) (fxand #xfffffff b))))))
 
 
-(define-syntax-rule (-flvector-loop dst src n offset body)
-  (let loop ([i (fx- n 1)])
-    (cond
-      [(fx< i 0) body]
-      [else
-       (let ([a (fxvector-ref src (fx* i 2))]
-             [b (fxvector-ref src (fx+ (fx* i 2) 1))])
-         (flvector-set!
-          dst (fx+ i offset)
-          (fl* 8.673617379884035e-19 ; (expt 2 -60)
-               (real->double-flonum (fxior (fxlshift a 28) (fxand #xfffffff b)))))
-         (loop (fx- i 1)))])))
+(define (irandom-u64vector n)
+  (let ([out (make-u64vector n)]
+        [in (irandom-bytes (fx* n 8))])
+    (memcpy (u64vector->cpointer out) 0 in 0 n _uint64)
+    out))
+
+
+(define-syntax (-vector-loop stx)
+  (syntax-case stx ()
+    [(_ typ dst src n offset combine rest-expr)
+     #'(-vector-loop fxvector typ dst src n offset combine rest-expr)]
+    [(_ src-typ typ dst src n offset combine rest-expr)
+     (with-syntax ([src-ref (format-id #'typ "~a-ref" #'src-typ)]
+                   [vec-set! (format-id #'typ "~a-set!" #'typ)])
+       #'(let loop ([i (fx- n 1)])
+           (cond
+             [(fx< i 0) rest-expr]
+             [else
+              (let ([a (src-ref src (fx* i 2))]
+                    [b (src-ref src (fx+ (fx* i 2) 1))])
+                (vec-set! dst (fx+ i offset) (combine a b))
+                (loop (fx- i 1)))])))]))
+
+
+(define-syntax-rule (-fx-combine a b)
+  (fxior (fxlshift a 28) (fxand #xfffffff b)))
+
+
+(define (irandom-fxvector n)
+  (let ([out (make-fxvector n)]
+        [in (irandom-fxvector-32 (fx* n 2))])
+    (-vector-loop fxvector out in n 0 -fx-combine out)))
+
+
+(define-syntax-rule (-fl-combine a b)
+  (fl* 8.673617379884035e-19 ; (expt 2 -60)
+       (real->double-flonum (fxior (fxlshift a 28) (fxand #xfffffff b)))))
 
 
 (define (irandom-flvector n)
-  (let ([out (make-flvector n)])
-    (cond
-      [(fx> n #x7ffffffffffffff)
-       (let* ([n/2 (fxrshift n 1)]
-              [in (irandom-fxvector-32 n)])
-         (-flvector-loop out in n/2 0
-                         (let ([in (irandom-fxvector-32 n)])
-                           (-flvector-loop out in n/2 n/2 out))))]
-      [else
-       (let ([in (irandom-fxvector-32 (fx* n 2))])
-         (-flvector-loop out in n 0 out))])))
+  (let ([out (make-flvector n)]
+        [in (irandom-fxvector-32 (fx* n 2))])
+    (-vector-loop flvector out in n 0 -fl-combine out)))
+
+
+(define (irandom-f64vector n)
+  (let ([out (make-f64vector n)]
+        [in (irandom-fxvector-32 (fx* n 2))])
+    (-vector-loop f64vector out in n 0 -fl-combine out)))

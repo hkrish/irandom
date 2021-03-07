@@ -2,7 +2,7 @@
 
 (define collection "irandom")
 
-(define version "0.5")
+(define version "0.6")
 
 (define pkg-desc "Racket implementation of Bob Jenkins' ISAAC pseudorandom number\
  generator (Indirection, Shift, Accumulate, Add, and Count).")
