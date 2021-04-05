@@ -1,8 +1,6 @@
 #lang racket/base
 
 (require racket/contract
-         (only-in racket/fixnum fxvector?)
-         (only-in racket/flonum flvector?)
          "./isaac.rkt"
          "./uuid.rkt")
 
@@ -12,12 +10,15 @@
          irandom-fixnum
          irandom-32
          (contract-out
-          [current-irandom-context (parameter/c irandom-context?)]
-          [irandom-bytes (-> fixnum? bytes?)]
-          (irandom-fxvector-32 (-> fixnum? fxvector?))
-          (irandom-list-32 (-> fixnum? any/c))
-          (irandom-fxvector (-> fixnum? fxvector?))
-          (irandom-flvector (-> fixnum? flvector?)))
+          [current-irandom-context (parameter/c irandom-context?)])
+         irandom-bytes
+         irandom-fxvector-32
+         irandom-list-32
+         irandom-fxvector
+         irandom-flvector
+         irandom-u32vector
+         irandom-u64vector
+         irandom-f64vector
          uuid-string
          uuid-bytes
          uuid-string?)

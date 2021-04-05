@@ -18,7 +18,6 @@
 (require (for-syntax racket/base racket/syntax)
          (only-in racket/require filtered-in)
          (only-in racket/random crypto-random-bytes)
-         racket/performance-hint
          (only-in racket/fixnum fxvector? make-fxvector for/fxvector)
          (only-in racket/flonum make-flvector)
          (only-in ffi/vector
@@ -222,9 +221,12 @@
 (define current-irandom-context (make-parameter (make-irandom-context)))
 
 
-(define (irandom-bytes n)
+(define-syntax-rule (check-length who n)
   (unless (and (fixnum? n) (>= n 0))
-    (raise-argument-error 'irandom-bytes "(and/c fixnum? nonnegative?)" n))
+    (raise-argument-error who "(and/c fixnum? nonnegative?)" n)))
+
+
+(define (irandom-bytes/unchecked n)
   (let ([dest (make-bytes n)])
     (cond
       [(fx= n 0) dest]
@@ -261,6 +263,11 @@
                 (loop (fx+ i 4) cnt))])))])))
 
 
+(define (irandom-bytes n)
+  (check-length 'irandom-bytes n)
+  (irandom-bytes/unchecked n))
+
+
 (define (irandom-32)
   (let* ([ctx (current-irandom-context)]
          [cnt (fx- (randcnt ctx) 1)])
@@ -274,36 +281,42 @@
        (fxvector-ref (randrsl ctx) 255)])))
 
 
-(begin-encourage-inline
-  (define (irandom-fxvector-32 n)
-    (let ([dest (make-fxvector n)])
-      (cond
-        [(fx= n 0) dest]
-        [else
-         (let* ([ctx (current-irandom-context)]
-                [rsl (randrsl ctx)]
-                [cnt (randcnt ctx)])
-           (let loop ([i 0] [cnt cnt])
-             (cond
-               [(fx<= cnt 0)
-                (generate-next-random-block! ctx)
-                (loop i 256)]
-               [(fx>= i n) (set-randcnt! ctx cnt) dest]
-               [else
-                (let ([cnt (fx- cnt 1)])
-                  (fxvector-set! dest i (fxvector-ref rsl cnt))
-                  (loop (fx+ i 1) cnt))])))]))))
+(define (irandom-fxvector-32/unchecked n)
+  (let ([dest (make-fxvector n)])
+    (cond
+      [(fx= n 0) dest]
+      [else
+       (let* ([ctx (current-irandom-context)]
+              [rsl (randrsl ctx)]
+              [cnt (randcnt ctx)])
+         (let loop ([i 0] [cnt cnt])
+           (cond
+             [(fx<= cnt 0)
+              (generate-next-random-block! ctx)
+              (loop i 256)]
+             [(fx>= i n) (set-randcnt! ctx cnt) dest]
+             [else
+              (let ([cnt (fx- cnt 1)])
+                (fxvector-set! dest i (fxvector-ref rsl cnt))
+                (loop (fx+ i 1) cnt))])))])))
+
+
+(define (irandom-fxvector-32 n)
+  (check-length 'irandom-fxvector-32 n)
+  (irandom-fxvector-32/unchecked n))
 
 
 (define (irandom-u32vector n)
+  (check-length 'irandom-u32vector n)
   (let ([out (make-u32vector n)]
-        [in (irandom-bytes (fx* n 4))])
+        [in (irandom-bytes/unchecked (fx* n 4))])
     (memcpy (u32vector->cpointer out) 0 in 0 n _uint32)
     out))
 
 
 (define (irandom-list-32 n)
-  (let ([v (irandom-fxvector-32 n)])
+  (check-length 'irandom-list-32 n)
+  (let ([v (irandom-fxvector-32/unchecked n)])
     (let loop ([i 0] [dst null])
       (cond
         [(fx= i n) dst]
@@ -311,14 +324,14 @@
 
 
 (define (irandom-fixnum)
-  (let* ([v (irandom-fxvector-32 2)]
+  (let* ([v (irandom-fxvector-32/unchecked 2)]
          [a (fxvector-ref v 0)]
          [b (fxvector-ref v 1)])
     (fxior (fxlshift a 28) (fxand #xfffffff b))))
 
 
 (define (irandom)
-  (let* ([v (irandom-fxvector-32 2)]
+  (let* ([v (irandom-fxvector-32/unchecked 2)]
          [a (fxvector-ref v 0)]
          [b (fxvector-ref v 1)])
     (fl* 8.673617379884035e-19   ; (expt 2 -60)
@@ -326,8 +339,9 @@
 
 
 (define (irandom-u64vector n)
+  (check-length 'irandom-u64vector n)
   (let ([out (make-u64vector n)]
-        [in (irandom-bytes (fx* n 8))])
+        [in (irandom-bytes/unchecked (fx* n 8))])
     (memcpy (u64vector->cpointer out) 0 in 0 n _uint64)
     out))
 
@@ -354,8 +368,9 @@
 
 
 (define (irandom-fxvector n)
+  (check-length 'irandom-fxvector n)
   (let ([out (make-fxvector n)]
-        [in (irandom-fxvector-32 (fx* n 2))])
+        [in (irandom-fxvector-32/unchecked (fx* n 2))])
     (-vector-loop fxvector out in n 0 -fx-combine out)))
 
 
@@ -365,12 +380,14 @@
 
 
 (define (irandom-flvector n)
+  (check-length 'irandom-flvector n)
   (let ([out (make-flvector n)]
-        [in (irandom-fxvector-32 (fx* n 2))])
+        [in (irandom-fxvector-32/unchecked (fx* n 2))])
     (-vector-loop flvector out in n 0 -fl-combine out)))
 
 
 (define (irandom-f64vector n)
+  (check-length 'irandom-f64vector n)
   (let ([out (make-f64vector n)]
-        [in (irandom-fxvector-32 (fx* n 2))])
+        [in (irandom-fxvector-32/unchecked (fx* n 2))])
     (-vector-loop f64vector out in n 0 -fl-combine out)))
