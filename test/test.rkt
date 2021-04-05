@@ -47,6 +47,7 @@
 
   (check-true (andmap fixnum? (build-list 1000000 (lambda (_) (irandom-fixnum)))))
 
+  (check-true (andmap uuid-string? (for/list ([i (in-range 100000)]) (uuid-bytes))))
   (check-true (andmap uuid-string? (for/list ([i (in-range 100000)]) (uuid-string))))
 
 
@@ -60,14 +61,16 @@
     (string-join
      (map list->string
           (cdr (foldr (lambda (e l)
-                        (if (>= (car l) 3)
+                        (if (>= (car l) 2)
                             (list* 0 (list e) (cdr l))
                             (list* (add1 (car l)) (cons e (cadr l)) (cddr l))))
-                      '(0 ()) (string->list (number->string n))))) ","))
+                      '(-1 ()) (string->list (number->string n)))))
+     ","))
 
   (let* ([N32 10000000]
          [N08 (* 4 N32)]
-         [N64 (inexact->exact (/ N32 2))])
+         [N64 (inexact->exact (/ N32 2))]
+         [NUUID 1000000])
     (collect-garbage)
     (displayln (format "[Performance test] : ~a 32bit random values" (grp N32)))
 
@@ -118,5 +121,16 @@
     (display (~a "  racket/random :" #:width 25))
     (collect-garbage 'minor)
     (time (and #t (for ([i (in-range N64)]) (random))))
+
+    (displayln (format "[Performance test] : ~a UUIDs" (grp NUUID)))
+
+    (display (~a "  uuid-bytes :" #:width 25))
+    (collect-garbage 'minor)
+    (time (and #t (for ([i (in-range NUUID)]) (uuid-bytes))))
+
+    (display (~a "  uuid-string :" #:width 25))
+    (collect-garbage 'minor)
+    (time (and #t (for ([i (in-range NUUID)]) (uuid-string))))
+
     (void))
   )

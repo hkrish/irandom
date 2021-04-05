@@ -19,4 +19,5 @@
           (irandom-fxvector (-> fixnum? fxvector?))
           (irandom-flvector (-> fixnum? flvector?)))
          uuid-string
+         uuid-bytes
          uuid-string?)

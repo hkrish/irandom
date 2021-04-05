@@ -4,7 +4,7 @@
          racket/unsafe/ops
          "./isaac.rkt")
 
-(provide uuid-string uuid-string?)
+(provide uuid-bytes uuid-string uuid-string?)
 
 
 ;; The regular expression for checking valid UUIDv4 format is from
@@ -17,7 +17,7 @@
    str))
 
 
-(define (uuid-string)
+(define (uuid-bytes)
   (define-syntax-rule (set-version b) (fxior #x40 (fxand #x0F b)))
   (define-syntax-rule (set-variant b) (fxior #x80 (fxand #x3F b)))
   (define-syntax-rule (->X b) (if (unsafe-fx< b 10) (unsafe-fx+ b 48) (unsafe-fx+ b 87)))
@@ -42,4 +42,7 @@
     (copy* bout brnd 8 10 19)
     (unsafe-bytes-set! bout 23 c-)
     (copy* bout brnd 10 16 24)
-    (bytes->string/latin-1 bout)))
+    bout))
+
+
+(define (uuid-string) (bytes->string/latin-1 (uuid-bytes)))
