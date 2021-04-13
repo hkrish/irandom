@@ -42,7 +42,8 @@
     (copy* bout brnd 8 10 19)
     (unsafe-bytes-set! bout 23 c-)
     (copy* bout brnd 10 16 24)
-    bout))
+    (unsafe-bytes->immutable-bytes! bout)))
 
 
-(define (uuid-string) (bytes->string/latin-1 (uuid-bytes)))
+(define (uuid-string)
+  (unsafe-string->immutable-string! (bytes->string/latin-1 (uuid-bytes))))
