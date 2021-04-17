@@ -1,4 +1,4 @@
 irandom
 =======
 
-Racket implementation of Bob Jenkins' ISAAC pseudorandom number generator
+Racket implementation of Bob Jenkins' ISAAC pseudorandom number generator.
