@@ -1,7 +1,14 @@
 #lang racket/base
 
-(require racket/fixnum
-         racket/unsafe/ops
+(require (for-syntax racket/base)
+         (only-in racket/require filtered-in)
+         (only-in racket/unsafe/ops unsafe-string->immutable-string!)
+         (filtered-in
+          (lambda (name)
+            (and (or (regexp-match #rx"^unsafe-fx" name)
+                     (regexp-match #rx"^unsafe-bytes" name))
+                 (regexp-replace #rx"unsafe-" name "")))
+          racket/unsafe/ops)
          "./isaac.rkt")
 
 (provide uuid-bytes uuid-string uuid-string?)
@@ -12,37 +19,38 @@
 ;;  Copyright © 2018–present Philip McGrath
 
 (define (uuid-string? str)
-  (regexp-match?
-   #px"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89ab][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
-   str))
+  (and (or string? bytes?)
+       (regexp-match?
+        #px"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89ab][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+        str)))
 
 
 (define (uuid-bytes)
   (define-syntax-rule (set-version b) (fxior #x40 (fxand #x0F b)))
   (define-syntax-rule (set-variant b) (fxior #x80 (fxand #x3F b)))
-  (define-syntax-rule (->X b) (if (unsafe-fx< b 10) (unsafe-fx+ b 48) (unsafe-fx+ b 87)))
+  (define-syntax-rule (->X b) (if (fx< b 10) (fx+ b 48) (fx+ b 87)))
   (define-syntax-rule (copy* dst src sf st df)
     (let loop ([i sf] [j df])
       (when (fx< i st)
-        (let ([c (unsafe-bytes-ref src i)])
-          (bytes-set! dst j (->X (unsafe-fxrshift c 4)))
-          (bytes-set! dst (unsafe-fx+ j 1) (->X (unsafe-fxand c #xF)))
-          (loop (unsafe-fx+ i 1) (unsafe-fx+ j 2))))))
+        (let ([c (bytes-ref src i)])
+          (bytes-set! dst j (->X (fxrshift c 4)))
+          (bytes-set! dst (fx+ j 1) (->X (fxand c #xF)))
+          (loop (fx+ i 1) (fx+ j 2))))))
   (let ([c- (char->integer #\-)]
         [brnd (irandom-bytes 16)]
         [bout (make-bytes 36)])
-    (unsafe-bytes-set! brnd 6 (set-version (unsafe-bytes-ref brnd 6)))
-    (unsafe-bytes-set! brnd 8 (set-variant (unsafe-bytes-ref brnd 8)))
+    (bytes-set! brnd 6 (set-version (bytes-ref brnd 6)))
+    (bytes-set! brnd 8 (set-variant (bytes-ref brnd 8)))
     (copy* bout brnd 0 4 0)
-    (unsafe-bytes-set! bout 8 c-)
+    (bytes-set! bout 8 c-)
     (copy* bout brnd 4 6 9)
-    (unsafe-bytes-set! bout 13 c-)
+    (bytes-set! bout 13 c-)
     (copy* bout brnd 6 8 14)
-    (unsafe-bytes-set! bout 18 c-)
+    (bytes-set! bout 18 c-)
     (copy* bout brnd 8 10 19)
-    (unsafe-bytes-set! bout 23 c-)
+    (bytes-set! bout 23 c-)
     (copy* bout brnd 10 16 24)
-    (unsafe-bytes->immutable-bytes! bout)))
+    (bytes->immutable-bytes! bout)))
 
 
 (define (uuid-string)
